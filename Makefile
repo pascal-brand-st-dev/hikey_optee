@@ -20,7 +20,7 @@ _all:
 all: build-lloader build-fip build-boot-img build-nvme build-bl30 build-ptable
 
 clean: clean-bl1-bl2-bl31-fip clean-bl33 clean-lloader-ptable
-clean: clean-linux-dtb clean-boot-img clean-initramfs clean-optee-linuxdriver
+clean: clean-linux-dtb clean-boot-img clean-initramfs
 clean: clean-optee-client clean-bl32 clean-aes-perf
 
 cleaner: clean cleaner-nvme cleaner-bl30 cleaner-aarch64-gcc cleaner-arm-gcc cleaner-busybox
@@ -48,7 +48,9 @@ help:
 	@echo "      [DTB = $(DTB)]"
 	@echo "      [INITRAMFS = $(INITRAMFS)]"
 	@echo "          [gen_rootfs/busybox/*]"
-	@echo "          [OPTEE-LINUXDRIVER = $(optee-linuxdriver-files)]"
+	@if [ "$(LINNUXDRIVER)" = 1 ]; then \
+	   echo "          [OPTEE-LINUXDRIVER = $(optee-linuxdriver-files)]"; \
+	 fi
 	@echo "          [OPTEE-CLIENT = optee_client/out/libteec.so*" \
 	                 "optee_client/out/tee-supplicant/tee-supplicant]"
 	@echo "          [OPTEE-TEST = out/usr/local/bin/xtest" \
@@ -322,10 +324,14 @@ clean-lloader-ptable:
 # each time it is run
 
 LINUX = linux/arch/arm64/boot/Image
-DTB = linux/arch/arm64/boot/dts/hi6220-hikey.dtb
+DTB = linux/arch/arm64/boot/dts/hisilicon/hi6220-hikey.dtb
 # Config fragments to merge with the default kernel configuration
 KCONFIGS += kernel_config/usb_net_dm9601.conf
 #KCONFIGS += kernel_config/ftrace.conf
+ifneq ($(LINUXDRIVER),1)
+# In-kernel driver
+KCONFIGS += kernel_config/optee.conf
+endif
 
 .PHONY: build-linux
 build-linux:: $(aarch64-linux-gnu-gcc)
@@ -394,8 +400,10 @@ clean-boot-img:
 
 INITRAMFS = initramfs.cpio.gz
 
+ifeq ($(LINUXDRIVER),1)
 ifneq ($(filter all build-optee-linuxdriver,$(MAKECMDGOALS)),)
 initramfs-deps += build-optee-linuxdriver
+endif
 endif
 ifneq ($(filter all build-optee-client,$(MAKECMDGOALS)),)
 initramfs-deps += build-optee-client
@@ -417,7 +425,7 @@ gen_rootfs/filelist-all.txt: gen_rootfs/filelist-final.txt initramfs-add-files.t
 	$(ECHO) '  GEN    $@'
 	$(Q)cat gen_rootfs/filelist-final.txt | sed '/fbtest/d' >$@
 	$(Q)export KERNEL_VERSION=`cd linux ; $(MAKE) --no-print-directory -s kernelversion` ;\
-	    export TOP=$(PWD) ; export IFGP=$(IFGP) ; \
+	    export TOP=$(PWD) ; export IFGP=$(IFGP) ; export IFLINUXDRIVER=$(IFLINUXDRIVER) ;\
 	    $(expand-env-var) <initramfs-add-files.txt >>$@
 
 gen_rootfs/filelist-final.txt: .busybox $(aarch64-linux-gnu-gcc)
@@ -465,6 +473,14 @@ cleaner-bl30:
 # OP-TEE Linux driver
 #
 
+# Check if kernel supports OP-TEE, if so we don't need to build the
+# out-of-tree driver
+ifeq (,$(wildcard linux/drivers/tee/optee))
+LINUXDRIVER=1
+endif
+
+ifeq ($(LINUXDRIVER),1)
+
 optee-linuxdriver-files := optee_linuxdriver/optee.ko \
                            optee_linuxdriver/optee_armtz.ko
 
@@ -489,6 +505,12 @@ clean-optee-linuxdriver:
 	   LOCALVERSION= \
 	   M=../optee_linuxdriver \
 	   clean
+
+clean: clean-optee-linuxdriver
+
+else
+IFLINUXDRIVER=\#
+endif # not LINUXDRIVER
 
 #
 # OP-TEE client library and tee-supplicant executable

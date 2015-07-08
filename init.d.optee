@@ -6,11 +6,11 @@
 #
 case "$1" in
     start)
-	if [ -e /bin/tee-supplicant -a -e /lib/modules/`uname -r`/optee_armtz.ko ]; then
+	if [ -e /bin/tee-supplicant ]; then
 		echo "Starting OP-TEE..."
-		modprobe optee_armtz
+		[ -e /lib/modules/`uname -r`/optee_armtz.ko ] && modprobe optee_armtz
 		count=20
-		while [ ! -e /dev/opteearmtz00 -a $count -ne 0 ]
+		while [ ! -e /dev/opteearmtz00 -a ! -e /dev/tee0 -a $count -ne 0 ]
 		do
 			sleep 0.1
 			count=`expr $count - 1`
